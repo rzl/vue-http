@@ -10,7 +10,8 @@ function parseArgs() {
   const args = process.argv.slice(2);
   const options = {
     port: 6000,
-    dir: process.cwd()
+    dir: process.cwd(),
+    fallback: 'index.html'
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -23,6 +24,10 @@ function parseArgs() {
       options.dir = path.resolve(args[++i]);
     } else if (arg.startsWith('--dir=')) {
       options.dir = path.resolve(arg.split('=')[1]);
+    } else if (arg === '--fallback' || arg === '-f') {
+      options.fallback = args[++i];
+    } else if (arg.startsWith('--fallback=')) {
+      options.fallback = arg.split('=')[1];
     } else if (arg === '--help' || arg === '-h') {
       showHelp();
       process.exit(0);
@@ -39,14 +44,16 @@ function showHelp() {
 Usage: vue-http [options] [directory]
 
 Options:
-  -p, --port <number>   指定端口 (默认: 6000)
-  -d, --dir <path>      指定静态目录 (默认: 当前目录)
-  -h, --help            显示帮助信息
+  -p, --port <number>      指定端口 (默认: 6000)
+  -d, --dir <path>         指定静态目录 (默认: 当前目录)
+  -f, --fallback <file>    指定回退文件 (默认: index.html)
+  -h, --help               显示帮助信息
 
 Examples:
   vue-http
   vue-http ./dist
   vue-http --port 8080
+  vue-http --fallback app.html
   vue-http --port 8080 ./dist
 `);
 }
@@ -133,18 +140,14 @@ function createServer(options) {
     fs.stat(filePath, (err, stats) => {
       if (!err && stats.isFile()) {
         serveFile(filePath, res);
-      } else if (!err && stats.isDirectory()) {
-        const indexPath = path.join(filePath, 'index.html');
-        fs.access(indexPath, fs.constants.F_OK, (err) => {
-          if (!err) {
-            serveFile(indexPath, res);
-          } else {
-            fallbackToIndex(res, options.dir);
-          }
-        });
       } else {
-        // 文件不存在，回退到 index.html (SPA 支持)
-        fallbackToIndex(res, options.dir);
+        // 目录或文件不存在，统一走 fallback
+        const actualFallback = detectFallbackFile(options.dir, options.fallback);
+        if (actualFallback) {
+          serveFile(path.join(options.dir, actualFallback), res);
+        } else {
+          send404(res);
+        }
       }
     });
   });
@@ -169,16 +172,34 @@ function serveFile(filePath, res) {
   });
 }
 
-function fallbackToIndex(res, dir) {
+function send404(res) {
+  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('404 Not Found');
+}
+
+// 同步检测实际可用的 fallback 文件名
+function detectFallbackFile(dir, fallback) {
+  const fallbackPath = path.join(dir, fallback);
+  if (fs.existsSync(fallbackPath) && fs.statSync(fallbackPath).isFile()) {
+    return fallback;
+  }
+
   const indexPath = path.join(dir, 'index.html');
-  fs.access(indexPath, fs.constants.F_OK, (err) => {
-    if (!err) {
-      serveFile(indexPath, res);
-    } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('404 Not Found');
+  if (fallback !== 'index.html' && fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+    return 'index.html';
+  }
+
+  try {
+    const files = fs.readdirSync(dir);
+    const htmlFile = files.find(f => f.toLowerCase().endsWith('.html'));
+    if (htmlFile) {
+      return htmlFile;
     }
-  });
+  } catch (e) {
+    // ignore
+  }
+
+  return null;
 }
 
 // 获取本地 IP 地址
@@ -216,12 +237,18 @@ async function main() {
     console.log(`端口 ${options.port} 被占用，自动切换到端口 ${port}`);
   }
 
+  const actualFallback = detectFallbackFile(options.dir, options.fallback);
   const server = createServer(options);
   
   server.listen(port, () => {
     const ip = getLocalIP();
     console.log(`\n  服务已启动`);
     console.log(`  静态目录: ${options.dir}`);
+    if (actualFallback) {
+      console.log(`  回退文件: ${actualFallback}`);
+    } else {
+      console.log(`  回退文件: (无可用 html 文件)`);
+    }
     console.log(`\n  本地:   http://localhost:${port}/`);
     console.log(`  网络:   http://${ip}:${port}/`);
     console.log(`\n  按 Ctrl+C 停止服务\n`);
