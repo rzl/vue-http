@@ -9,7 +9,7 @@ const net = require('net');
 function parseArgs() {
   const args = process.argv.slice(2);
   const options = {
-    port: 6000,
+    port: 6006,
     dir: process.cwd(),
     fallback: 'index.html'
   };
