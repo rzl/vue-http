@@ -41,6 +41,7 @@ vue-http
 ```
   服务已启动
   静态目录: D:\project\my-vue-app\dist
+  回退文件: index.html
 
   本地:   http://localhost:6006/
   网络:   http://192.168.1.100:6006/
