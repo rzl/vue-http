@@ -202,18 +202,19 @@ function detectFallbackFile(dir, fallback) {
   return null;
 }
 
-// 获取本地 IP 地址
-function getLocalIP() {
+// 获取所有本地 IPv4 地址
+function getLocalIPs() {
   const os = require('os');
   const interfaces = os.networkInterfaces();
+  const ips = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
+        ips.push(iface.address);
       }
     }
   }
-  return '127.0.0.1';
+  return ips;
 }
 
 // 主函数
@@ -241,7 +242,7 @@ async function main() {
   const server = createServer(options);
   
   server.listen(port, () => {
-    const ip = getLocalIP();
+    const ips = getLocalIPs();
     console.log(`\n  服务已启动`);
     console.log(`  静态目录: ${options.dir}`);
     if (actualFallback) {
@@ -250,7 +251,9 @@ async function main() {
       console.log(`  回退文件: (无可用 html 文件)`);
     }
     console.log(`\n  本地:   http://localhost:${port}/`);
-    console.log(`  网络:   http://${ip}:${port}/`);
+    ips.forEach(ip => {
+      console.log(`  网络:   http://${ip}:${port}/`);
+    });
     console.log(`\n  按 Ctrl+C 停止服务\n`);
   });
 
